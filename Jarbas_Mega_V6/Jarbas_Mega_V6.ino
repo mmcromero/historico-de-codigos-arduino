@@ -1,0 +1,866 @@
+//Variavel de ambiente determina se estamos em teste ou produção
+// TESTE = 0
+// PRODUÇÃO = 1
+
+int ambiente = 0;
+
+
+#include <dht.h>
+#include <SPI.h>
+#include <Ethernet.h>
+#include <ArdOSC.h>  //inclui blibioteca ArdOSC
+
+//if(ambiente == 0){ // TESTE
+  byte myMac[]={0x00, 0xAA, 0xBB, 0xCC, 0xDA, 0x02 };  //Mac TESTE
+  byte myIp[]  = { 192, 168, 1, 22 };   //define IP da central automação 2
+//}else if(ambiente == 1){ //PRODUÇÃO
+  //byte myMac[]={0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};  //Mac PRODUÇÃO
+  //byte myIp[]  = { 192, 168, 1, 21 };   //define IP da central automação 1
+//}
+
+
+byte gateway[] = { 192,168,0, 1 }; // ip do roteador
+byte subnet[] = { 255, 255, 255, 0 };
+
+byte motoxIp[]  = { 192, 168, 0, 13 };   //define IP do motox
+
+
+/// OSC
+int  serverPort  = 8000;   //define a porta de recepção do comando OSC
+int destPort= 9000;   //define a porta de envio do comando OSC
+OSCServer server;    //inicializa o servidor OSC (serviço que trata a recepção de mensagem OSC)
+OSCClient client;    //inicializa o cliente OSC (serviço que trata o envio de mensagem OSC)
+
+//ethernet
+EthernetServer server1(8080); // Cria o servidor na porta 8080
+
+
+//luzes 
+int delay1 = 50;
+int delay2 = 15;
+//pir
+int timeOffDelay = 0;
+int setLimiteDelay = 60;
+
+#include <Wire.h>  // Comes with Arduino IDE
+#include <LiquidCrystal_I2C.h>
+LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
+
+
+
+/////////////////////////// includes IR
+#include <IRremote.h>  
+IRsend irsend; // IR SALA
+//---------------------------------------------------------
+/////////////////////////// receptor IR sala
+int RECV_PIN = 45; 
+IRrecv irrecv(RECV_PIN);
+decode_results results; 
+float armazenavalor; 
+//---------------------------------------------------------
+
+// sensor presença
+int pinopir = 46;  //Pino ligado ao sensor PIR
+int acionamento;  //Variavel para guardar valor do sensor
+int mostraPirHall;
+
+/////////////--------------------
+
+
+
+int  RELE1 = 22; // luzHall
+int  RELE2 = 23; // luzJantar
+
+int  RELE3 = 24; // tomadaMesaSala
+
+int  RELE4 = 25; // luzQuartinho
+int  RELE5 = 26; // luzCozinha
+int  RELE6 = 27; // luzArea
+int  RELE7 = 28; // luzCorredor1
+int  RELE8 = 29; // luzCorredor2
+int  RELE9 = 30; // luzQuartoArthur1
+int  RELE10 = 31;// TomadaQuartoArthur1
+int  RELE11 = 32;// luzBanheiroSocial1
+int  RELE12 = 33;// luzBanheiroSocial2
+int  RELE13 = 34;// luzBanheiroSuite1
+int  RELE14 = 35;// luzBanheiroSuite2
+int  RELE15 = 36;// luzQuartoSuite1
+int  RELE16 = 37;// TomadaQuartoSuite1
+
+//int  QUARTO_ARTHUR_2 = 36;      // luzQuartoArthur2
+//int  QUARTO_SUITE_2 = 37;       // luzQuartoSuite2
+ 
+// Flags de controle ILUMINAÇÃO
+int STATUSRele1 = 2;
+int STATUSRele2 = 2;
+int STATUSRele3 = 2;
+int STATUSRele4 = 2;
+int STATUSRele5 = 2;
+int STATUSRele6 = 2;
+int STATUSRele7 = 2;
+int STATUSRele8 = 2;
+int STATUSRele9 = 2;
+int STATUSRele10 = 2;
+int STATUSRele11 = 2;
+int STATUSRele12 = 2;
+int STATUSRele13 = 2;
+int STATUSRele14 = 2;
+int STATUSRele15 = 2;
+int STATUSRele16 = 2;
+
+int STATUSTvSala = 2;
+int STATUSTvArthur = 2;
+
+int STATUSFitaLed1 = 2;
+int STATUSFitaLed2 = 2;
+int STATUSFitaLed3 = 2;
+
+int FLAGHall;  
+int FLAGJantar; 
+int FLAGSala;  
+int FLAGMesa_sala;  
+int FLAGQuartinho;  
+int FLAGCozinha;  
+int FLAGArea;  
+int FLAGCorredor_1;  
+int FLAGCorredor_2;  
+int FLAGQuarto_arthur_1;  
+int FLAGQuarto_arthur_2;  
+int FLAGQuarto_arthur_3; 
+int FLAGBanheiro_social_1;  
+int FLAGBanheiro_social_2;  
+int FLAGBanheiro_suite_1;  
+int FLAGBanheiro_suite_2;  
+int FLAGQuarto_suite_1;  
+int FLAGQuarto_suite_2;  
+int FLAGQuarto_suite_3;
+
+ 
+//// outros flag
+int FLAGTrancaPorta = 1; //trancada
+int FLAGPirHall = 1;  
+int FLAGPorta   = 0;  
+int  ON = 1;  
+int  OFF = 0;  
+int FLAGChaveGeral = ON;  
+String cmd = "";
+String cmdR = "";
+String cmdEthernet = "";
+String cmdWire = "";
+String strLocal = "N"; 
+int mostraTempOsc;
+
+//bt
+byte pinoBotao1 = 38;//44
+byte pinoBotao2 = 39;
+byte pinoBotao3 = 40;
+byte pinoBotao4 = 41;
+
+
+const long DEBOUNCE_DELAY_1 = 100;
+int leitura_anterior_1 = 0;
+int leitura_anterior_db_1 = 0;
+long time_ultimo_debounce_1 = 0;
+int debounce_ok_1 = 0;
+
+const long DEBOUNCE_DELAY_2 = 100;
+int leitura_anterior_2 = 0;
+int leitura_anterior_db_2 = 0;
+long time_ultimo_debounce_2 = 0;
+int debounce_ok_2 = 0;
+
+const long DEBOUNCE_DELAY_3 = 100;
+int leitura_anterior_3 = 0;
+int leitura_anterior_db_3 = 0;
+long time_ultimo_debounce_3 = 0;
+int debounce_ok_3 = 0;
+
+const long DEBOUNCE_DELAY_4 = 100;
+int leitura_anterior_4 = 0;
+int leitura_anterior_db_4 = 0;
+long time_ultimo_debounce_4 = 0;
+int debounce_ok_4 = 0;
+
+
+//----------------------------
+
+
+
+
+#include "pitches.h" //musica
+#include "Infravermelho.h" //
+#include "Dht.h" //
+#include "Luz.h" //
+#include "Osc.h" //
+#include "Ldr.h" //
+
+//sensor magnetico
+int SM = 49;
+int mostraPorta;
+
+void setup(){ 
+  
+  Wire.begin();        // join i2c bus (address optional for master)
+  //Serial3.begin(9600); //serial bluetooh
+  Serial.begin(9600);
+  
+  pinMode(SM, INPUT); //sensor magnetico
+  
+  pinMode(speakerPin, OUTPUT); // speaker
+  
+  pinMode(pinopir, INPUT);   //Define pino sensor como entrada
+  
+  
+  // seta os pinos select como saída expamsor ldr
+  pinMode(ps0,OUTPUT);    
+  pinMode(ps1,OUTPUT);    
+  pinMode(ps2,OUTPUT);   
+  pinMode(ps3,OUTPUT); 
+  
+  pinMode(pinoBotao1, INPUT);//bt1
+  pinMode(pinoBotao2, INPUT);//bt2
+  pinMode(pinoBotao3, INPUT);//bt3
+  pinMode(pinoBotao4, INPUT);//bt4
+  
+  pinMode(NEGATIVOIRSALA, OUTPUT);
+  pinMode(NEGATIVOIRARTHUR, OUTPUT);
+  pinMode(NEGATIVOIRCASAL, OUTPUT);
+  
+  pinMode(RELE1, OUTPUT);
+  pinMode(RELE2, OUTPUT);
+  pinMode(RELE3, OUTPUT);
+  pinMode(RELE4, OUTPUT);
+  pinMode(RELE5, OUTPUT);
+  pinMode(RELE6, OUTPUT);
+  pinMode(RELE7, OUTPUT);  
+  pinMode(RELE8, OUTPUT);  
+  pinMode(RELE9, OUTPUT);  
+  pinMode(RELE10, OUTPUT);  
+  pinMode(RELE11, OUTPUT);
+  pinMode(RELE12, OUTPUT);
+  pinMode(RELE13, OUTPUT);
+  pinMode(RELE14, OUTPUT);
+  pinMode(RELE15, OUTPUT);
+  pinMode(RELE16, OUTPUT);
+  
+  digitalWrite(NEGATIVOIRSALA, LOW);
+  digitalWrite(NEGATIVOIRARTHUR, LOW);
+  digitalWrite(NEGATIVOIRCASAL, LOW);
+
+  digitalWrite(RELE1, LOW);
+  digitalWrite(RELE2, LOW);
+  digitalWrite(RELE3, LOW);
+  digitalWrite(RELE4, LOW);
+  digitalWrite(RELE5, LOW);
+  digitalWrite(RELE6, LOW);
+  digitalWrite(RELE7, LOW);
+  digitalWrite(RELE8, LOW);  
+  digitalWrite(RELE9, LOW);  
+  digitalWrite(RELE10, LOW);  
+  digitalWrite(RELE11, LOW);  
+  digitalWrite(RELE12, LOW);  
+  digitalWrite(RELE13, LOW);  
+  digitalWrite(RELE14, LOW);  
+  digitalWrite(RELE15, LOW);  
+  digitalWrite(RELE16, LOW); 
+  
+  //Rec IR
+  irrecv.enableIRIn(); // Inicializa o receptor IR 
+  
+  
+  Ethernet.begin(myMac, myIp, gateway, subnet);
+  
+  server.begin(serverPort);   //inicializa o servidor OSC definindo a porta de RX
+  server.addCallback("/ard/luzHall",&luz1);
+  server.addCallback("/ard/luzJantar",&luz2);
+  server.addCallback("/ard/luzSala",&luz3);
+  server.addCallback("/ard/luzMesaSala",&luz4);
+  server.addCallback("/ard/luzQuartinho",&luz5);
+  server.addCallback("/ard/luzCozinha",&luz6);
+  server.addCallback("/ard/luzArea",&luz7);
+  server.addCallback("/ard/luzCorredor1",&luz8);
+  server.addCallback("/ard/luzCorredor2",&luz9);
+  server.addCallback("/ard/luzQuartoArthur1",&luz10); 
+  server.addCallback("/ard/luzQuartoArthur2",&luz11); 
+  server.addCallback("/ard/luzQuartoSuite1",&luz12); 
+  server.addCallback("/ard/luzQuartoSuite2",&luz13); 
+  server.addCallback("/ard/luzBanheiroSocial1",&luz14); 
+  server.addCallback("/ard/luzBanheiroSocial2",&luz15); 
+  server.addCallback("/ard/luzBanheiroSuite1",&luz16); 
+  server.addCallback("/ard/luzBanheiroSuite2",&luz17);  
+  //controle led
+  server.addCallback("/ard/controleLedSala",&controleLedSalaOsc);
+  server.addCallback("/ard/controleLedArthur",&controleLedArthurOsc);
+  //controle tv
+  server.addCallback("/ard/controleTvSala",&controleTvSalaOsc); 
+  server.addCallback("/ard/controleTvArthur",&controleTvArthurOsc);
+  //controle net
+  server.addCallback("/ard/controleNetSala",&controleNetSalaOsc);
+  server.addCallback("/ard/controleNetArthur",&controleNetArthurOsc);
+  //controle sub
+  server.addCallback("/ard/controleSub",&controleSubOsc);
+  //controle Geral
+  server.addCallback("/ard/controleGeral",&controleGeralOsc);
+  server.addCallback("/ard/telas",&telasOsc);
+  
+  //inicia servidor ethernet
+  //server1.begin();
+   
+
+  if(ambiente == 0){ // TESTE
+    apresentaLuzes();
+  }else if(ambiente == 1){ //PRODUÇÃO
+    musica();
+  }
+  
+}
+
+
+void loop(){
+  
+
+
+EthernetClient client1 = server1.available();
+  if (client1) {
+    boolean currentLineIsBlank = true;
+    while (client1.connected()) {
+      if (client1.available()) {
+        char c = client1.read();
+        cmdEthernet += c;
+        if (c == '\n' && currentLineIsBlank) {
+          /*
+          // send a standard http response header
+          client1.println("HTTP/1.1 200 OK");
+          client1.println("Content-Type: text/html");
+          client1.println("Connection: close");  // the connection will be closed after completion of the response
+          client1.println("Refresh: 5");  // refresh the page automatically every 5 sec
+          client1.println();
+          client1.println("<!DOCTYPE HTML>");
+          client1.println("<html>");
+          // output the value of each analog input pin
+      
+          client1.println("Sua abaixo a sua requisição: ");
+          client1.println("<pre>");
+          client1.println(requisicao);
+          client1.println("</pre>");
+  
+          for (int analogChannel = 0; analogChannel < 6; analogChannel++) {     
+            int sensorReading = analogRead(analogChannel);
+            client1.print("analog input ");
+            client1.print(analogChannel);
+            client1.print(" is ");
+            client1.print(sensorReading);
+            client1.println("<br />");       
+      
+          }
+          client1.println("</html>");
+          
+          break;
+          */
+        }
+        if (c == '\n') {
+          // you're starting a new line
+          currentLineIsBlank = true;
+        } 
+        else if (c != '\r') {
+          // you've gotten a character on the current line
+          currentLineIsBlank = false;
+        }
+      }
+    }
+    // give the web browser time to receive the data
+    delay(1);
+    // close the connection:
+    client1.stop();
+  }
+  
+  //-----------------------------------------------------------------------------------------------------------------------------
+  
+  /////// RECEBE SERIAL //-----------------------------------------------------------------------------------------------------------
+  if(Serial.available() > 0) // serial pc
+  {
+    while(Serial.available() > 0)
+    {
+      cmd += char(Serial.read());
+      delay(10);
+    }
+  }
+  
+
+  
+  if (cmd.length() >0 || cmdEthernet.length() >0) { 
+    cmd += cmdEthernet;
+    Serial.println(cmd);
+    // lampadas
+    if(cmd == "luzHall"){ luzHall(); }
+    if(cmd == "luzJantar"){ luzJantar(); }
+    if(cmd == "luzSala"){ luzSala(); }                    // LED
+    if(cmd == "luzMesaSala"){ luzMesaSala(); }            // LED
+    if(cmd == "luzQuartinho"){ luzQuartinho(); }
+    if(cmd == "luzCozinha"){ luzCozinha(); }
+    if(cmd == "luzArea"){ luzArea(); }
+    if(cmd == "luzCorredor1"){ luzCorredor1(); }
+    if(cmd == "luzCorredor2"){ luzCorredor2(); }
+    if(cmd == "luzQuartoArthur1"){ luzQuartoArthur1(); }
+    if(cmd == "luzQuartoArthur2"){ luzQuartoArthur2(); }  //LED
+    if(cmd == "luzQuartoSuite1"){luzQuartoSuite1();}
+    if(cmd == "luzQuartoSuite2"){luzQuartoSuite2();}      //LED
+    if(cmd == "luzBanheiroSocial1"){luzBanheiroSocial1();}
+    if(cmd == "luzBanheiroSocial2"){luzBanheiroSocial2();}
+    if(cmd == "luzBanheiroSuite1"){luzBanheiroSuite1();}
+    if(cmd == "luzBanheiroSuite2"){luzBanheiroSuite2();}    
+  //tomadas
+    if(cmd == "tomadaMesaSala"){tomadaMesaSala();}
+    if(cmd == "tomadaQuartoArthur"){tomadaQuartoArthur();}
+    if(cmd == "tomadaQuartoSuite"){tomadaQuartoSuite();}
+    
+
+
+    //fita led 
+    //recebo array completo com o local no fim
+    //ex:ledDesligaS
+    //quebro em 2 separando a ultima string como local
+    //
+    //
+    //
+    strLocal = cmd.substring(cmd.length() -1);
+    cmdR = cmd.substring(0,cmd.length() -1);
+
+    if(cmdR == "ledDesliga"){ledDesliga(strLocal); }
+    if(cmdR == "ledLiga"){ledLiga(strLocal); }
+    if(cmdR == "ledSobe"){ledSobe(strLocal); }
+    if(cmdR == "ledDesce"){ledDesce(strLocal); }
+    if(cmdR == "ledFlash"){ledFlash(strLocal); }
+    if(cmdR == "ledStrobe"){ledStrobe(strLocal); }
+    if(cmdR == "ledFade"){ledFade(strLocal); }
+    if(cmdR == "ledSmooth"){ledSmooth(strLocal); }
+    if(cmdR == "ledWhite"){ledWhite(strLocal); }
+    if(cmdR == "ledRed"){ledRed(strLocal); }
+    if(cmdR == "ledRed1"){ledRed1(strLocal); }
+    if(cmdR == "ledRed2"){ledRed2(strLocal); }
+    if(cmdR == "ledRed3"){ledRed3(strLocal); }
+    if(cmdR == "ledRed4"){ledRed4(strLocal); }
+    if(cmdR == "ledGreen"){ledGreen(strLocal); }
+    if(cmdR == "ledGreen1"){ledGreen1(strLocal); }
+    if(cmdR == "ledGreen2"){ledGreen2(strLocal); }
+    if(cmdR == "ledGreen3"){ledGreen3(strLocal); }
+    if(cmdR == "ledGreen4"){ledGreen4(strLocal); }
+    if(cmdR == "ledBlue"){ledBlue(strLocal); }
+    if(cmdR == "ledBlue1"){ledBlue1(strLocal); }
+    if(cmdR == "ledBlue2"){ledBlue2(strLocal); }
+    if(cmdR == "ledBlue3"){ledBlue3(strLocal); }
+    if(cmdR == "ledBlue4"){ledBlue4(strLocal); }
+
+    //controle tv
+    if(cmdR == "inputTv"){inputTv(strLocal); }
+    if(cmdR == "cimaTv"){cimaTv(strLocal); }
+    if(cmdR == "baixoTv"){baixoTv(strLocal); }
+    if(cmdR == "esquerdaTv"){esquerdaTv(strLocal); }
+    if(cmdR == "direitaTv"){direitaTv(strLocal); }
+    if(cmdR == "okTv"){okTv(strLocal); }
+    if(cmdR == "homeTv"){homeTv(strLocal); }
+    if(cmdR == "exitTv"){exitTv(strLocal); }
+    if(cmdR == "qmenuTv"){qmenuTv(strLocal); }
+    if(cmdR == "backTv"){backTv(strLocal); }
+    if(cmdR == "tv3d"){tv3d(strLocal); }
+    if(cmdR == "volumeTvMenos"){volumeTvMenos(strLocal); }
+    if(cmdR == "volumeTvMais"){volumeTvMais(strLocal); }
+    if(cmdR == "canalTvMenos"){canalTvMenos(strLocal); }
+    if(cmdR == "canalTvMais"){canalTvMais(strLocal); }
+    if(cmdR == "playTv"){playTv(strLocal); }
+    if(cmdR == "pauseTv"){pauseTv(strLocal); }
+    if(cmdR == "stopTv"){stopTv(strLocal); }
+    if(cmdR == "rrTv"){rrTv(strLocal); }
+    if(cmdR == "ffTv"){ffTv(strLocal); }
+    if(cmdR == "ratioTv"){ratioTv(strLocal); }
+    if(cmdR == "sleepTv"){sleepTv(strLocal); }
+    if(cmdR == "pictureTv"){pictureTv(strLocal); }
+    if(cmdR == "somTv"){somTv(strLocal); }
+
+
+  //controle net 
+  if(cmdR == "ligaNet"){ligaNet(strLocal); }
+  if(cmdR == "infoNet"){infoNet(strLocal); }
+  if(cmdR == "portalNet"){portalNet(strLocal); }
+  if(cmdR == "mozaicoNet"){mozaicoNet(strLocal); }
+  if(cmdR == "volMaisNet"){volMaisNet(strLocal); }
+  if(cmdR == "volMenosNet"){volMenosNet(strLocal); }
+  if(cmdR == "canalMaisNet"){canalMaisNet(strLocal); }
+  if(cmdR == "canalMenosNet"){canalMenosNet(strLocal); }
+  if(cmdR == "num1Net"){num1Net(strLocal); }
+  if(cmdR == "num2Net"){num2Net(strLocal); }
+  if(cmdR == "num3Net"){num3Net(strLocal); }
+  if(cmdR == "num4Net"){num4Net(strLocal); }
+  if(cmdR == "num5Net"){num5Net(strLocal); }
+  if(cmdR == "num6Net"){num6Net(strLocal); }
+  if(cmdR == "num7Net"){num7Net(strLocal); }
+  if(cmdR == "num8Net"){num8Net(strLocal); }
+  if(cmdR == "num9Net"){num9Net(strLocal); }
+  if(cmdR == "num0Net"){num0Net(strLocal); }
+  if(cmdR == "cimaNet"){cimaNet(strLocal); }
+  if(cmdR == "baixoNet"){baixoNet(strLocal); }
+  if(cmdR == "esquerdaNet"){esquerdaNet(strLocal); }
+  if(cmdR == "direitaNet"){direitaNet(strLocal); }
+  if(cmdR == "okNet"){okNet(strLocal); }
+  if(cmdR == "muteNet"){muteNet(strLocal); }
+  if(cmdR == "voltarNet"){voltarNet(strLocal); }
+  if(cmdR == "favNet"){favNet(strLocal); }
+  if(cmdR == "menuNet"){menuNet(strLocal); }
+  if(cmdR == "sairNet"){sairNet(strLocal); }
+  if(cmdR == "nowNet"){nowNet(strLocal); }
+  if(cmdR == "audioNet"){audioNet(strLocal); }
+  if(cmdR == "agoraNet"){agoraNet(strLocal); }
+  if(cmdR == "legendaNet"){legendaNet(strLocal); }
+  if(cmdR == "musicaNet"){musicaNet(strLocal); }
+  if(cmdR == "rrNet"){rrNet(strLocal); }
+  if(cmdR == "playPauseNet"){playPauseNet(strLocal); }
+  if(cmdR == "stopNet"){stopNet(strLocal); }
+  if(cmdR == "ffNet"){ffNet(strLocal); }
+  if(cmdR == "recNet"){recNet(strLocal); }
+  if(cmdR == "netTvNet"){netTvNet(strLocal); }
+/*
+//acesso rapido a canais
+historytNet
+globoNet
+gnewsNet
+discoveryKidstNet
+cartoonNet
+nickNet
+foxNet
+
+//sub
+powerSub
+inputSub
+modeSub
+swMenosSub
+swMaisSub
+volMenosSub
+volMaisSub
+*/
+            
+    if(cmd == "geral on"){FLAGChaveGeral = ON; chaveGeral();}
+    if(cmd == "geral off"){FLAGChaveGeral = OFF; chaveGeral();}
+    if(cmd == "viajar"){preparaViajar();}
+    
+
+    
+   
+  //LIGA DESLIGA SENSORES
+  //PIR 
+    if(cmd == "pirHallOn") { FLAGPirHall = 1;}
+    if(cmd == "pirHallOff"){ FLAGPirHall = 0;}
+
+  //SENSOR LIMINOSIDADE   
+    if(cmd == "s1On") { mostrasensorLdr1 = 1;}
+    if(cmd == "s1Off"){ mostrasensorLdr1 = 0;}
+    if(cmd == "s2On") { mostrasensorLdr2 = 1;}
+    if(cmd == "s2Off"){ mostrasensorLdr2 = 0;}
+    if(cmd == "s3On") { mostrasensorLdr3 = 1;}
+    if(cmd == "s3Off"){ mostrasensorLdr3 = 0;}
+    if(cmd == "s4On") { mostrasensorLdr4 = 1;}
+    if(cmd == "s4Off"){ mostrasensorLdr4 = 0;}
+    if(cmd == "s5On") { mostrasensorLdr5 = 1;}
+    if(cmd == "s5Off"){ mostrasensorLdr5 = 0;}
+    if(cmd == "s6On") { mostrasensorLdr6 = 1;}
+    if(cmd == "s6Off"){ mostrasensorLdr6 = 0;}
+    if(cmd == "s7On") { mostrasensorLdr7 = 1;}
+    if(cmd == "s7Off"){ mostrasensorLdr7 = 0;}
+    if(cmd == "s8On") { mostrasensorLdr8 = 1;}
+    if(cmd == "s8Off"){ mostrasensorLdr8 = 0;}  
+    if(cmd == "s9On") { mostrasensorLdr9 = 1;}
+    if(cmd == "s9Off"){ mostrasensorLdr9 = 0;}
+    if(cmd == "s10On") { mostrasensorLdr10 = 1;}
+    if(cmd == "s10Off"){ mostrasensorLdr10 = 0;}
+    if(cmd == "s11On") { mostrasensorLdr11 = 1;}
+    if(cmd == "s11Off"){ mostrasensorLdr11 = 0;}
+    if(cmd == "s12On") { mostrasensorLdr12 = 1;}
+    if(cmd == "s12Off"){ mostrasensorLdr12 = 0;}
+    if(cmd == "s13On") { mostrasensorLdr13 = 1;}
+    if(cmd == "s13Off"){ mostrasensorLdr13 = 0;}
+    if(cmd == "s14On") { mostrasensorLdr14 = 1;}
+    if(cmd == "s14Off"){ mostrasensorLdr14 = 0;}
+    if(cmd == "s15On") { mostrasensorLdr15 = 1;}
+    if(cmd == "s15Off"){ mostrasensorLdr15 = 0;}
+    if(cmd == "s16On") { mostrasensorLdr16 = 1;}
+    if(cmd == "s16Off"){ mostrasensorLdr16 = 0;}
+    if(cmd == "s17On") { mostrasensorLdr17 = 1;}
+    if(cmd == "s17Off"){ mostrasensorLdr17 = 0;}
+  // ajuste sensibilidade sensor
+    if(cmd == "s1+"){ sensibilidadeSensor1 = sensibilidadeSensor1+ 100;}
+    if(cmd == "s1-"){ sensibilidadeSensor1 = sensibilidadeSensor1- 100;}
+    if(cmd == "s2+"){ sensibilidadeSensor2 = sensibilidadeSensor2+ 100;}
+    if(cmd == "s2-"){ sensibilidadeSensor2 = sensibilidadeSensor2- 100;}
+    if(cmd == "s3+"){ sensibilidadeSensor3 = sensibilidadeSensor3+ 100;}
+    if(cmd == "s3-"){ sensibilidadeSensor3 = sensibilidadeSensor3- 100;}
+    if(cmd == "s4+"){ sensibilidadeSensor4 = sensibilidadeSensor4+ 100;}
+    if(cmd == "s4-"){ sensibilidadeSensor4 = sensibilidadeSensor4- 100;}
+    if(cmd == "s5+"){ sensibilidadeSensor5 = sensibilidadeSensor5+ 100;}
+    if(cmd == "s5-"){ sensibilidadeSensor5 = sensibilidadeSensor5- 100;}
+    if(cmd == "s6+"){ sensibilidadeSensor6 = sensibilidadeSensor6+ 100;}
+    if(cmd == "s6-"){ sensibilidadeSensor6 = sensibilidadeSensor6- 100;}
+    if(cmd == "s7+"){ sensibilidadeSensor7 = sensibilidadeSensor7+ 100;}
+    if(cmd == "s7-"){ sensibilidadeSensor7 = sensibilidadeSensor7- 100;}
+    if(cmd == "s8+"){ sensibilidadeSensor8 = sensibilidadeSensor8+ 100;}
+    if(cmd == "s8-"){ sensibilidadeSensor8 = sensibilidadeSensor8- 100;}
+    if(cmd == "s9+"){ sensibilidadeSensor9 = sensibilidadeSensor9+ 100;}
+    if(cmd == "s9-"){ sensibilidadeSensor9 = sensibilidadeSensor9- 100;}
+    if(cmd == "s10+"){ sensibilidadeSensor10 = sensibilidadeSensor10+100;}
+    if(cmd == "s10-"){ sensibilidadeSensor10 = sensibilidadeSensor10-100;}
+    if(cmd == "s11+"){ sensibilidadeSensor11 = sensibilidadeSensor11+100;}
+    if(cmd == "s11-"){ sensibilidadeSensor11 = sensibilidadeSensor11-100;}
+    if(cmd == "s12+"){ sensibilidadeSensor12 = sensibilidadeSensor12+100;}
+    if(cmd == "s12-"){ sensibilidadeSensor12 = sensibilidadeSensor12-100;}
+    if(cmd == "s13+"){ sensibilidadeSensor13 = sensibilidadeSensor13+100;}
+    if(cmd == "s13-"){ sensibilidadeSensor13 = sensibilidadeSensor13-100;}
+    if(cmd == "s14+"){ sensibilidadeSensor14 = sensibilidadeSensor14+100;}
+    if(cmd == "s14-"){ sensibilidadeSensor14 = sensibilidadeSensor14-100;}
+    if(cmd == "s15+"){ sensibilidadeSensor15 = sensibilidadeSensor15+100;}
+    if(cmd == "s15-"){ sensibilidadeSensor15 = sensibilidadeSensor15-100;}
+    if(cmd == "s16+"){ sensibilidadeSensor16 = sensibilidadeSensor16+100;}
+    if(cmd == "s16-"){ sensibilidadeSensor16 = sensibilidadeSensor16-100;}
+    if(cmd == "s17+"){ sensibilidadeSensor17 = sensibilidadeSensor17+100;}
+    if(cmd == "s17-"){ sensibilidadeSensor17 = sensibilidadeSensor17-100;}
+    if(cmd == "s18+"){ sensibilidadeSensor18 = sensibilidadeSensor18+100;}
+    if(cmd == "s18-"){ sensibilidadeSensor18 = sensibilidadeSensor18-100;}
+    
+  // informa tempera
+    if(cmd == "t1"){tempExterno();}
+    if(cmd == "t2"){tempSala();}
+    if(cmd == "t3"){tempArthur();}
+    if(cmd == "t4"){tempCasal();}
+    
+
+  //mostradores
+    //OSC
+    if(cmd == "mostraOscOn"){ mostraOSC = 1;}
+    if(cmd == "mostraOscOff"){ mostraOSC = 0;}
+    //SM
+    if(cmd == "mostraPortaOn"){ mostraPorta = 1;}
+    if(cmd == "mostraPortaOff"){ mostraPorta = 0;}
+    //PIR
+    if(cmd == "mostraPirHallOn"){ mostraPirHall = 1;}
+    if(cmd == "mostraPirHallOff"){ mostraPirHall = 0;}
+
+
+    cmd = "";
+    cmdR = "";
+    cmdEthernet = "";
+  }
+  
+  //-----------------------------------------------------------------------------------------------------------------------------
+  
+  /////// RECEBE IR //-----------------------------------------------------------------------------------------------------------
+  if (irrecv.decode(&results))  
+  {  
+    Serial.print("Valor lido : ");  
+    Serial.println(results.value, HEX);  
+    armazenavalor = (results.value);   
+    
+    if (armazenavalor == 0xFF6897 || armazenavalor == 0x20DF8877 ) { luzArea();          okTv('S'); }//Verifica se a tecla 1 foi acionada   
+    if (armazenavalor == 0xFF9867 || armazenavalor == 0x20DF48B7 ) { luzCozinha();       okTv('S'); }//Verifica se a tecla 2 foi acionada     
+    if (armazenavalor == 0xFFB04F || armazenavalor == 0x20DFC837 ) { luzQuartinho();     okTv('S'); }//Verifica se a tecla 3 foi acionada  
+    if (armazenavalor == 0xFF30CF || armazenavalor == 0x20DF28D7 ) { luzSala();          okTv('S'); }//Verifica se a tecla 4 foi acionada  
+    if (armazenavalor == 0xFF18E7 || armazenavalor == 0x20DFA857 ) { luzJantar();        okTv('S'); }//Verifica se a tecla 5 foi acionada  
+    if (armazenavalor == 0xFF7A85 || armazenavalor == 0x20DF6897 ) { luzHall();          okTv('S'); }//Verifica se a tecla 6 foi acionada  
+    if (armazenavalor ==                              0x20DFE817 ) { luzMesaSala();      okTv('S'); }//Verifica se a tecla 7 foi acionada  
+    if (armazenavalor ==                              0x20DF18E7 ) { luzCorredor1();     okTv('S'); }//Verifica se a tecla 8 foi acionada 
+    if (armazenavalor ==                              0x20DF9867 ) { luzQuartoArthur1(); okTv('S'); }//Verifica se a tecla 9 foi acionada 
+    if (armazenavalor ==                              0x20DF32CD ) { ligaTv('A');        okTv('S'); }//Verifica se a tecla list foi acionada
+    if (armazenavalor ==                              0x20DF08F7 ) { luzCorredor2();     okTv('S'); }//Verifica se a tecla 0 foi acionada 
+    if (armazenavalor ==                              0x20DF58A7 ) { luzQuartoArthur2(); okTv('S'); }//Verifica se a tecla qview foi acionada 
+    
+    
+    irrecv.resume(); //Le o próximo valor  
+  } 
+  //-----------------------------------------------------------------------------------------------------------------------------
+
+  if(server.aviableCheck()>0){}// deixar essa linha para que o osc funcione
+  //if(server.aviableCheck()>0){Serial.println("alive! ");}
+  
+  botoes();
+  
+  sensorLuzes();
+  
+  sensorPresenca();
+   
+  verificaPorta();
+   
+  if(mostraTempOsc == 1){
+    tempOsc();
+  }
+
+}// FIM DO LOOP  
+
+///////////////////////////////// funções
+
+int valorSMDb;
+void verificaPorta()
+{
+  int valorSM = digitalRead(SM);
+  if(valorSM == 0){ //sensor aberto
+                                                                                //if(FLAGTrancaPorta != 2){Serial.println("Porta Aberta");}  
+                                                                                //FLAGTrancaPorta = 2;                    // desabilita tranca da porta
+    if(FLAGPirHall == 1){FLAGPirHall = 0;}  // desabilita sensor de presença
+                                                                                //delay(10);//aplico um delay pra evitar ficar piscando
+    if(STATUSRele1 == 0){ luzHall(); }      //Mantem luz ligada
+    valorSMDb = 0;
+  }else{ //sensor fechado
+    if(FLAGTrancaPorta == 2){
+      FLAGTrancaPorta = 0; // Habilita tranca da porta
+    }   
+    if(valorSMDb == 0){FLAGPirHall = 1; }      //habilita Pir
+    valorSMDb = 1; 
+  }
+  
+  if(mostraPorta == 1 ){
+   Serial.println(digitalRead(SM));
+  }
+  
+}
+
+
+
+void tempOsc()
+{
+
+  
+  DHT1.read11(dht_dpin1);
+  float temperaturaExterna = DHT1.temperature;
+  OSCMessage txMes1;  //cria uma nova mensagem OSC motoX
+  txMes1.setAddress(motoxIp,destPort);  //define endereço IP e porta do destino da mensagem OSC
+  txMes1.beginMessage("/ard/temperaturaExterna");  //define comando OSC
+  txMes1.addArgFloat(temperaturaExterna);  //define argumento Float que sera enviado 
+  client.send(&txMes1);  //envia mensagem OSC
+  
+  DHT2.read11(dht_dpin2);
+  float temperaturaInterna = DHT2.temperature;
+  OSCMessage txMes2;  //cria uma nova mensagem OSC motoX
+  txMes2.setAddress(motoxIp,destPort);  //define endereço IP e porta do destino da mensagem OSC
+  txMes2.beginMessage("/ard/temperaturaInterna");  //define comando OSC
+  txMes2.addArgFloat(temperaturaInterna);  //define argumento Float que sera enviado 
+  client.send(&txMes2);  //envia mensagem OSC
+  
+  DHT3.read11(dht_dpin3);
+  float temperaturaQuarto1 = DHT3.temperature;
+  OSCMessage txMes3;  //cria uma nova mensagem OSC motoX
+  txMes3.setAddress(motoxIp,destPort);  //define endereço IP e porta do destino da mensagem OSC
+  txMes3.beginMessage("/ard/temperaturaQuarto1");  //define comando OSC
+  txMes3.addArgFloat(temperaturaQuarto1);  //define argumento Float que sera enviado 
+  client.send(&txMes3);  //envia mensagem OSC
+  
+  DHT4.read11(dht_dpin4);
+  float temperaturaQuarto2 = DHT4.temperature;
+  OSCMessage txMes4;  //cria uma nova mensagem OSC motoX
+  txMes4.setAddress(motoxIp,destPort);  //define endereço IP e porta do destino da mensagem OSC
+  txMes4.beginMessage("/ard/temperaturaQuarto2");  //define comando OSC
+  txMes4.addArgFloat(temperaturaQuarto2);  //define argumento Float que sera enviado 
+  client.send(&txMes4);  //envia mensagem OSC
+  delay(500);
+  som();
+}
+
+void atualizaTelasOsc()
+{   
+  /*   
+  OSCMessage txMes1;  //cria uma nova mensagem OSC motoX
+     txMes1.setAddress(motoxIp,destPort);  //define endereço IP e porta do destino da mensagem OSC
+     txMes1.beginMessage("/ard/controleGeralSaida");  //define comando OSC
+     //txMes1.addArgFloat(HIGH);  //define argumento Float que sera enviado 
+     txMes1.addArgString("oi");  //define argumento Float que sera enviado 
+     client.send(&txMes1);  //envia mensagem OSC
+    */
+    som();
+} 
+   
+
+int valorPirDb;    
+void sensorPresenca()
+{
+  acionamento = digitalRead(pinopir); //Le o valor do sensor PIR  
+  
+  if(FLAGPirHall == 1){ // se estiver ativo
+    if (acionamento == LOW)  //Sem movimento
+    {
+ 
+      if (valorPirDb == 1){   
+        if(STATUSRele1 == 1){ luzHall(); }
+        valorPirDb = 0;
+        Serial.println("Sem presença!");
+      }
+    }else{
+      if (valorPirDb == 0){
+        if(STATUSRele1 == 0){ luzHall(); }
+        valorPirDb = 1;
+        Serial.println("Com presença!");
+      }
+    }
+  }
+  if(mostraPirHall == 1){
+      Serial.print("Pir: ");
+      Serial.print(acionamento);
+      Serial.print("  - Status Pir: ");
+      Serial.print(FLAGPirHall);
+      Serial.print("  - Status PirDb: ");
+      Serial.print(valorPirDb);
+      Serial.print("  - Status Rele: ");
+      Serial.println(STATUSRele1);
+  }
+}
+//-----------------------------------------------------------------------------------------------------------------------------
+void botoes()
+{  
+  int leitura_atual_1 = digitalRead(pinoBotao1);
+  if(leitura_atual_1 != leitura_anterior_1){time_ultimo_debounce_1 = millis(); debounce_ok_1;}
+  if((millis()-time_ultimo_debounce_1)>DEBOUNCE_DELAY_1){debounce_ok_1=1;}
+  if(debounce_ok_1 == 1){
+    if(leitura_atual_1 == 1 && leitura_anterior_db_1 == 0){ 
+      if(FLAGPirHall == 1){FLAGPirHall = 0;}else if(FLAGPirHall == 0){FLAGPirHall = 1;}
+      //FLAGPirHall = 0;
+      luzHall();
+    }
+    leitura_anterior_db_1 = leitura_atual_1;
+
+  }
+  
+  int leitura_atual_2 = digitalRead(pinoBotao2);
+  if(leitura_atual_2 != leitura_anterior_2){time_ultimo_debounce_2 = millis(); debounce_ok_2;}
+  if((millis()-time_ultimo_debounce_2)>DEBOUNCE_DELAY_2){debounce_ok_2=1;}
+  if(debounce_ok_2 == 1){
+    if(leitura_atual_2 == 1 && leitura_anterior_db_2 == 0){ 
+      luzJantar();
+    }
+    leitura_anterior_db_2 = leitura_atual_2;
+
+  }
+  
+  
+  int leitura_atual_3 = digitalRead(pinoBotao3);
+  if(leitura_atual_3 != leitura_anterior_3){time_ultimo_debounce_3 = millis(); debounce_ok_3;}
+  if((millis()-time_ultimo_debounce_3)>DEBOUNCE_DELAY_3){debounce_ok_3=1;}
+  if(debounce_ok_3 == 1){
+    if(leitura_atual_3 == 1 && leitura_anterior_db_3 == 0){ 
+      luzSala();
+    }
+    leitura_anterior_db_3 = leitura_atual_3;
+
+  }
+  
+  
+  int leitura_atual_4 = digitalRead(pinoBotao4);
+  if(leitura_atual_4 != leitura_anterior_4){time_ultimo_debounce_4 = millis(); debounce_ok_4;}
+  if((millis()-time_ultimo_debounce_4)>DEBOUNCE_DELAY_4){debounce_ok_4=1;}
+  if(debounce_ok_4 == 1){
+    if(leitura_atual_4 == 1 && leitura_anterior_db_4 == 0){ 
+      luzMesaSala();
+    }
+    leitura_anterior_db_4 = leitura_atual_4;
+
+  }
+  
+  
+  
+  
+}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
